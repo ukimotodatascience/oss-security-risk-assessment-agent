@@ -2,6 +2,7 @@ from pathlib import Path
 from oss_risk_agent.rules.category_d_governance import (
     D1AbandonedRepoRule,
     D2BusFactorRule,
+    D3OssHealthScoreRule,
     D3BranchProtectionRule,
     D4SecurityPolicyRule,
     D5OpenSSFScorecardRule,
@@ -66,9 +67,34 @@ def test_d3_branch_protection_rule(dummy_repo: Path, monkeypatch):
     risks = rule.analyze(dummy_repo)
 
     assert len(risks) == 1
-    assert risks[0].category == "D-3"
+    assert risks[0].category == "D-6"
     assert risks[0].severity == Severity.MEDIUM
     assert "無効" in risks[0].evidence
+
+
+def test_d3_oss_health_score_rule(dummy_repo: Path, monkeypatch):
+    setup_git_config(dummy_repo)
+    rule = D3OssHealthScoreRule()
+
+    monkeypatch.setattr(
+        "oss_risk_agent.utils.github_api.fetch_github_repository_info",
+        lambda owner_repo: {
+            "pushed_at": "2020-01-01T00:00:00Z",
+            "open_issues_count": 80,
+            "closed_issues_count": 20,
+        },
+    )
+    monkeypatch.setattr(
+        "oss_risk_agent.utils.github_api.fetch_github_contributors",
+        lambda owner_repo: [{"login": "dev1", "contributions": 100}],
+    )
+
+    risks = rule.analyze(dummy_repo)
+    assert len(risks) == 1
+    assert risks[0].category == "D-3"
+    assert risks[0].severity in [Severity.HIGH, Severity.MEDIUM]
+    assert risks[0].score_metadata is not None
+    assert "health_score" in risks[0].score_metadata
 
 
 def test_d4_security_policy_rule(dummy_repo: Path, mock_external_apis):

@@ -8,6 +8,7 @@ from oss_risk_agent.core.gate import (
     create_baseline_payload,
     evaluate_gate,
     load_fail_conditions,
+    load_fail_conditions_with_profile,
 )
 from oss_risk_agent.core.models import RiskRecord, Severity
 
@@ -104,3 +105,43 @@ def test_apply_baseline_marks_existing_as_informational(tmp_path: Path):
     assert output_risks[0].severity == Severity.INFORMATIONAL
     assert len(gate_risks) == 1
     assert gate_risks[0].category == "B-2"
+
+
+def test_load_fail_conditions_with_profile(tmp_path: Path):
+    (tmp_path / "policy.yml").write_text(
+        """
+production:
+  fail_on:
+    - CRITICAL
+    - HIGH
+development:
+  fail_on:
+    - CRITICAL
+""",
+        encoding="utf-8",
+    )
+
+    prod = load_fail_conditions_with_profile(tmp_path, "policy.yml", "production")
+    dev = load_fail_conditions_with_profile(tmp_path, "policy.yml", "development")
+
+    assert prod["critical"] == 1
+    assert prod["high"] == 1
+    assert dev["critical"] == 1
+    assert dev["high"] > 1000
+
+
+def test_apply_ignore_rules_oss_riskignore_format(tmp_path: Path):
+    (tmp_path / ".oss-riskignore").write_text(
+        "B-2:docker/Dockerfile:期限=2099-01-01:理由=検証中\n",
+        encoding="utf-8",
+    )
+
+    risks = [
+        _risk("B-2", Severity.HIGH, "docker/Dockerfile"),
+        _risk("C-3", Severity.MEDIUM, "app/server.py"),
+    ]
+
+    remained, applied = apply_ignore_rules(risks, tmp_path, ".oss-riskignore")
+    assert len(remained) == 1
+    assert remained[0].category == "C-3"
+    assert len(applied) == 1

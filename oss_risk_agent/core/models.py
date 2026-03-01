@@ -26,6 +26,18 @@ class RiskRecord(BaseModel):
     )
 
 
+class SummaryRecord(BaseModel):
+    risk_score: float
+    maturity_score: float
+    category_scores: dict
+    counts_by_severity: dict
+    counts_by_category: dict
+    total_risks: int
+    critical_count: int
+    unscored_categories: List[str]
+    health_score: float = 100.0
+
+
 class ScanWarning(BaseModel):
     rule_category: str
     rule_name: str

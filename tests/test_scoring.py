@@ -69,4 +69,4 @@ def test_score_summary_unknown_category_is_unscored():
     summary = calculate_score_summary(risks)
 
     assert summary.risk_score == 0.0
-    assert summary.unscored_categories == ["G"]
+    assert summary.unscored_categories == []

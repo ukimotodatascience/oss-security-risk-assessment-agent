@@ -13,11 +13,13 @@ from oss_risk_agent.core.gate import (
     create_baseline_payload,
     evaluate_gate,
     load_fail_conditions,
+    load_fail_conditions_with_profile,
 )
 from oss_risk_agent.core.models import Severity
 from oss_risk_agent.core.scanner import Scanner
 from oss_risk_agent.core.sarif import convert_to_sarif
 from oss_risk_agent.core.scoring import calculate_score_summary
+from oss_risk_agent.utils.sbom import generate_cyclonedx_sbom
 
 app = typer.Typer(
     name="oss-risk-agent",
@@ -50,15 +52,30 @@ def scan(
         "--baseline",
         help="Use baseline JSON and evaluate only newly introduced risks",
     ),
+    generate_sbom: bool = typer.Option(
+        False,
+        "--generate-sbom",
+        help="Generate CycloneDX SBOM (sbom.cdx.json) before scanning",
+    ),
+    profile: str = typer.Option(
+        None,
+        "--profile",
+        help="Policy profile name (e.g. production/development)",
+    ),
     policy_file: str = typer.Option(
-        ".oss-risk-policy.yml",
+        "policy.yml",
         "--policy-file",
         help="Policy file path (relative to scan root)",
     ),
     ignore_file: str = typer.Option(
-        ".oss-risk-ignore.yml",
+        ".oss-riskignore",
         "--ignore-file",
         help="Ignore file path (relative to scan root)",
+    ),
+    ignore_expired_check: bool = typer.Option(
+        False,
+        "--ignore-expired-check",
+        help="Apply ignore rules even when expiry has passed",
     ),
     max_risk_score: float = typer.Option(
         None,
@@ -82,6 +99,12 @@ def scan(
 
     repo_path = Path(path)
 
+    if generate_sbom:
+        sbom_path = repo_path / "sbom.cdx.json"
+        generate_cyclonedx_sbom(repo_path, sbom_path)
+        if o_format == "text":
+            console.print(f"[green]SBOM generated:[/green] {sbom_path}")
+
     if max_risk_score is not None and not (0 <= max_risk_score <= 100):
         console.print(
             "[bold red]Invalid --max-risk-score. Must be between 0 and 100.[/bold red]"
@@ -96,7 +119,10 @@ def scan(
     warnings = scanner.warnings
 
     filtered_risks, ignore_applied = apply_ignore_rules(
-        raw_risks, repo_path, ignore_file
+        raw_risks,
+        repo_path,
+        ignore_file,
+        ignore_expired_check=ignore_expired_check,
     )
     output_risks, gate_target_risks, baseline_existing_count = apply_baseline(
         filtered_risks, baseline, repo_path
@@ -113,7 +139,7 @@ def scan(
 
     summary = calculate_score_summary(output_risks)
 
-    fail_conditions = load_fail_conditions(repo_path, policy_file)
+    fail_conditions = load_fail_conditions_with_profile(repo_path, policy_file, profile)
     gate_result = evaluate_gate(gate_target_risks, fail_conditions)
     audit_log = build_audit_log(repo_path, fail_conditions, ignore_applied, policy_file)
 

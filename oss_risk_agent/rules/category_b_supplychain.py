@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import List
 import re
 import yaml
+import json
+import subprocess
 
 from ..core.models import Rule, RiskRecord, Severity
 
@@ -245,4 +247,217 @@ class B3DirectExecutionRule(Rule):
                                 )
             except (OSError, UnicodeDecodeError):
                 continue
+        return risks
+
+
+class B4ContainerBaseImageCveRule(Rule):
+    @property
+    def category(self) -> str:
+        return "B-4"
+
+    @property
+    def name(self) -> str:
+        return "コンテナベースイメージCVE検出"
+
+    def _extract_base_images(self, repo_path: Path) -> List[tuple[str, str, int]]:
+        images: List[tuple[str, str, int]] = []
+        for dockerfile in repo_path.rglob("Dockerfile*"):
+            try:
+                with open(dockerfile, "r", encoding="utf-8") as f:
+                    for i, line in enumerate(f, 1):
+                        s = line.strip()
+                        if s.upper().startswith("FROM "):
+                            parts = s.split()
+                            if len(parts) >= 2:
+                                images.append(
+                                    (
+                                        str(dockerfile.relative_to(repo_path)),
+                                        parts[1],
+                                        i,
+                                    )
+                                )
+            except (OSError, UnicodeDecodeError):
+                continue
+        return images
+
+    def _scan_with_trivy(self, image: str) -> dict:
+        cmd = [
+            "trivy",
+            "image",
+            "--quiet",
+            "--format",
+            "json",
+            image,
+        ]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+        except Exception:
+            return {}
+        if proc.returncode != 0:
+            return {}
+        try:
+            return json.loads(proc.stdout or "{}")
+        except json.JSONDecodeError:
+            return {}
+
+    def analyze(self, repo_path: Path) -> List[RiskRecord]:
+        risks: List[RiskRecord] = []
+        base_images = self._extract_base_images(repo_path)
+
+        for dockerfile, image, line_no in base_images:
+            trivy_json = self._scan_with_trivy(image)
+            vulns = []
+            for result in trivy_json.get("Results", []) or []:
+                vulns.extend(result.get("Vulnerabilities", []) or [])
+
+            critical = [v for v in vulns if v.get("Severity") == "CRITICAL"]
+            high = [v for v in vulns if v.get("Severity") == "HIGH"]
+
+            if critical:
+                severity = Severity.CRITICAL
+            elif len(high) >= 3:
+                severity = Severity.HIGH
+            elif 1 <= len(high) <= 2:
+                severity = Severity.MEDIUM
+            else:
+                continue
+
+            evidence = ", ".join(
+                [f"{v.get('VulnerabilityID')}:{v.get('Severity')}" for v in vulns[:10]]
+            )
+            risks.append(
+                RiskRecord(
+                    category=self.category,
+                    name=self.name,
+                    severity=severity,
+                    description=f"ベースイメージ '{image}' にOSパッケージ脆弱性が検出されました。",
+                    target_file=dockerfile,
+                    line_number=line_no,
+                    evidence=evidence or image,
+                )
+            )
+
+        return risks
+
+
+class B5GithubActionsPermissionsRule(Rule):
+    @property
+    def category(self) -> str:
+        return "B-5"
+
+    @property
+    def name(self) -> str:
+        return "GitHub Actions権限過剰"
+
+    def analyze(self, repo_path: Path) -> List[RiskRecord]:
+        risks: List[RiskRecord] = []
+        workflows_dir = repo_path / ".github" / "workflows"
+        if not workflows_dir.exists():
+            return risks
+
+        for yaml_file in workflows_dir.glob("*.yml"):
+            try:
+                with open(yaml_file, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+            except (OSError, UnicodeDecodeError, yaml.YAMLError):
+                continue
+
+            rel = str(yaml_file.relative_to(repo_path))
+            permissions = data.get("permissions")
+            if permissions is None:
+                risks.append(
+                    RiskRecord(
+                        category=self.category,
+                        name=self.name,
+                        severity=Severity.MEDIUM,
+                        description="workflowでpermissionsが未定義です。",
+                        target_file=rel,
+                        evidence="permissions: <undefined>",
+                    )
+                )
+            elif permissions == "write-all":
+                risks.append(
+                    RiskRecord(
+                        category=self.category,
+                        name=self.name,
+                        severity=Severity.HIGH,
+                        description="workflowでwrite-all権限が指定されています。",
+                        target_file=rel,
+                        evidence="permissions: write-all",
+                    )
+                )
+            elif isinstance(permissions, dict):
+                for scope, value in permissions.items():
+                    if str(value).lower() == "write":
+                        risks.append(
+                            RiskRecord(
+                                category=self.category,
+                                name=self.name,
+                                severity=Severity.HIGH,
+                                description="GITHUB_TOKENに過剰なwriteスコープが付与されています。",
+                                target_file=rel,
+                                evidence=f"permissions.{scope}: write",
+                            )
+                        )
+                        break
+
+        return risks
+
+
+class B6ArtifactSignatureVerificationRule(Rule):
+    @property
+    def category(self) -> str:
+        return "B-6"
+
+    @property
+    def name(self) -> str:
+        return "Artifact署名検証"
+
+    def analyze(self, repo_path: Path) -> List[RiskRecord]:
+        risks: List[RiskRecord] = []
+
+        has_docker = any(repo_path.rglob("Dockerfile*"))
+        has_npm = (repo_path / "package.json").exists()
+        has_release = (repo_path / ".github" / "workflows").exists()
+
+        cosign_pub = repo_path / "cosign.pub"
+        provenance = repo_path / "provenance.json"
+        slsa = repo_path / "slsa-provenance.json"
+
+        if (has_docker or has_npm or has_release) and not cosign_pub.exists():
+            risks.append(
+                RiskRecord(
+                    category=self.category,
+                    name=self.name,
+                    severity=Severity.MEDIUM,
+                    description="cosign署名が確認できません。",
+                    target_file="artifacts",
+                    evidence="cosign.pub not found",
+                )
+            )
+
+        if not provenance.exists():
+            risks.append(
+                RiskRecord(
+                    category=self.category,
+                    name=self.name,
+                    severity=Severity.LOW,
+                    description="provenanceが未確認です。",
+                    target_file="artifacts",
+                    evidence="provenance.json not found",
+                )
+            )
+
+        if not slsa.exists():
+            risks.append(
+                RiskRecord(
+                    category=self.category,
+                    name=self.name,
+                    severity=Severity.LOW,
+                    description="SLSA level < 2 または未確認です。",
+                    target_file="artifacts",
+                    evidence="slsa-provenance.json not found",
+                )
+            )
+
         return risks

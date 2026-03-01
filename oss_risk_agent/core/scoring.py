@@ -15,7 +15,7 @@ SEVERITY_SCORES: Dict[Severity, int] = {
     Severity.CRITICAL: 10,
 }
 
-# Category weights for A-F (sum = 1.0)
+# Category weights (enterprise extended categories)
 CATEGORY_WEIGHTS: Dict[str, float] = {
     "A": 0.30,
     "B": 0.20,
@@ -23,6 +23,7 @@ CATEGORY_WEIGHTS: Dict[str, float] = {
     "D": 0.15,
     "E": 0.10,
     "F": 0.05,
+    "G": 0.00,
 }
 
 
@@ -35,6 +36,7 @@ class ScoreSummary(BaseModel):
     total_risks: int
     critical_count: int
     unscored_categories: List[str] = Field(default_factory=list)
+    health_score: float = Field(default=100.0)
 
 
 def _category_group(category: str) -> str:
@@ -60,6 +62,7 @@ def calculate_score_summary(risks: List[RiskRecord]) -> ScoreSummary:
             total_risks=0,
             critical_count=0,
             unscored_categories=[],
+            health_score=100.0,
         )
 
     counts_by_severity_counter = Counter(r.severity.value for r in risks)
@@ -74,29 +77,33 @@ def calculate_score_summary(risks: List[RiskRecord]) -> ScoreSummary:
 
     category_sum_score = defaultdict(float)
     category_count = defaultdict(int)
+    health_scores: List[float] = []
 
     for risk in risks:
         group = _category_group(risk.category)
         category_sum_score[group] += SEVERITY_SCORES.get(risk.severity, 0)
         category_count[group] += 1
+        if risk.category == "D-3" and isinstance(risk.score_metadata, dict):
+            hs = risk.score_metadata.get("health_score")
+            if isinstance(hs, (int, float)):
+                health_scores.append(float(hs))
 
-    # category_score = average severity score (0-10) normalized to 0-100
+    # Enterprise extended: category score uses accumulated severity contribution.
+    #   category_score = min(sum(severity_weight) * 10, 100)
     category_scores: Dict[str, float] = {}
-    for group, weight in CATEGORY_WEIGHTS.items():
-        cnt = category_count.get(group, 0)
-        if cnt == 0:
-            category_scores[group] = 0.0
-        else:
-            normalized = (category_sum_score[group] / (cnt * 10.0)) * 100.0
-            category_scores[group] = round(normalized, 2)
+    for group in CATEGORY_WEIGHTS.keys():
+        normalized = min(category_sum_score.get(group, 0.0) * 10.0, 100.0)
+        category_scores[group] = round(normalized, 2)
 
-    # Fixed-weight weighted average for A-F
-    risk_score = 0.0
+    # Total Risk Score = Σ(category_weight × severity_weight × rule_count)
+    # Scaled to 0-100 by multiplying by 10, then capped.
+    weighted_raw = 0.0
     for group, weight in CATEGORY_WEIGHTS.items():
-        risk_score += category_scores.get(group, 0.0) * weight
+        weighted_raw += weight * category_sum_score.get(group, 0.0)
 
-    risk_score = round(min(max(risk_score, 0.0), 100.0), 2)
+    risk_score = round(min(max(weighted_raw * 10.0, 0.0), 100.0), 2)
     maturity_score = round(100.0 - risk_score, 2)
+    health_score = round(min(health_scores), 2) if health_scores else 100.0
 
     unscored_categories = sorted(
         {g for g in category_count.keys() if g not in CATEGORY_WEIGHTS}
@@ -111,4 +118,5 @@ def calculate_score_summary(risks: List[RiskRecord]) -> ScoreSummary:
         total_risks=len(risks),
         critical_count=counts_by_severity.get(Severity.CRITICAL.value, 0),
         unscored_categories=unscored_categories,
+        health_score=health_score,
     )

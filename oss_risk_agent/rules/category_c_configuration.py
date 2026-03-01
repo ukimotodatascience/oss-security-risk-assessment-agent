@@ -424,3 +424,91 @@ class C4HighEntropySecretRule(Rule):
                 continue
 
         return risks
+
+
+class C5PrivilegedContainerRule(Rule):
+    @property
+    def category(self) -> str:
+        return "C-5"
+
+    @property
+    def name(self) -> str:
+        return "特権コンテナ"
+
+    def analyze(self, repo_path: Path) -> List[RiskRecord]:
+        risks: List[RiskRecord] = []
+
+        target_files = []
+        target_files.extend(repo_path.rglob("*.yaml"))
+        target_files.extend(repo_path.rglob("*.yml"))
+        target_files.extend(repo_path.rglob("docker-compose*.yml"))
+        target_files.extend(repo_path.rglob("docker-compose*.yaml"))
+
+        for file in target_files:
+            if ".git" in file.parts:
+                continue
+            rel = str(file.relative_to(repo_path))
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    for i, line in enumerate(f, 1):
+                        s = line.strip()
+                        normalized = s.replace(" ", "").lower()
+
+                        if "privileged:true" in normalized:
+                            risks.append(
+                                RiskRecord(
+                                    category=self.category,
+                                    name=self.name,
+                                    severity=Severity.CRITICAL,
+                                    description="privileged: true が設定されています。",
+                                    target_file=rel,
+                                    line_number=i,
+                                    evidence=s,
+                                )
+                            )
+
+                        if "cap_sys_admin" in normalized:
+                            risks.append(
+                                RiskRecord(
+                                    category=self.category,
+                                    name=self.name,
+                                    severity=Severity.HIGH,
+                                    description="CAP_SYS_ADMIN が付与されています。",
+                                    target_file=rel,
+                                    line_number=i,
+                                    evidence=s,
+                                )
+                            )
+
+                        if (
+                            "readonlyrootfilesystem" in normalized
+                            and "true" not in normalized
+                        ):
+                            risks.append(
+                                RiskRecord(
+                                    category=self.category,
+                                    name=self.name,
+                                    severity=Severity.MEDIUM,
+                                    description="readOnlyRootFilesystem が未設定または無効です。",
+                                    target_file=rel,
+                                    line_number=i,
+                                    evidence=s,
+                                )
+                            )
+
+                        if "seccomp" in normalized and "unconfined" in normalized:
+                            risks.append(
+                                RiskRecord(
+                                    category=self.category,
+                                    name=self.name,
+                                    severity=Severity.MEDIUM,
+                                    description="seccomp が未指定または緩和されています。",
+                                    target_file=rel,
+                                    line_number=i,
+                                    evidence=s,
+                                )
+                            )
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        return risks
