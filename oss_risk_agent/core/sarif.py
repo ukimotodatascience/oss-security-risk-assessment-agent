@@ -1,10 +1,8 @@
 import json
-from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel
-
 from .models import RiskRecord, Severity
+
 
 def convert_to_sarif(risks: List[RiskRecord]) -> str:
     """
@@ -15,7 +13,8 @@ def convert_to_sarif(risks: List[RiskRecord]) -> str:
         Severity.CRITICAL: "error",
         Severity.HIGH: "error",
         Severity.MEDIUM: "warning",
-        Severity.LOW: "note"
+        Severity.LOW: "note",
+        Severity.INFORMATIONAL: "note",
     }
 
     rules = {}
@@ -34,17 +33,15 @@ def convert_to_sarif(risks: List[RiskRecord]) -> str:
                 },
                 "properties": {
                     "category": risk.category,
-                    "severity": risk.severity.value
-                }
+                    "severity": risk.severity.value,
+                },
             }
-        
+
         # リザルト（検出項目）の構築
         result = {
             "ruleId": rule_id,
             "level": level_map.get(risk.severity, "warning"),
-            "message": {
-                "text": risk.description
-            },
+            "message": {"text": risk.description},
             "locations": [
                 {
                     "physicalLocation": {
@@ -53,13 +50,11 @@ def convert_to_sarif(risks: List[RiskRecord]) -> str:
                         },
                         "region": {
                             "startLine": risk.line_number if risk.line_number else 1,
-                            "snippet": {
-                                "text": risk.evidence
-                            }
-                        }
+                            "snippet": {"text": risk.evidence},
+                        },
                     }
                 }
-            ]
+            ],
         }
         results.append(result)
 
@@ -72,12 +67,12 @@ def convert_to_sarif(risks: List[RiskRecord]) -> str:
                     "driver": {
                         "name": "OSS Risk Assessment Agent",
                         "informationUri": "https://github.com/ukimotodatascience/oss-security-risk-assessment-agent",
-                        "rules": list(rules.values())
+                        "rules": list(rules.values()),
                     }
                 },
-                "results": results
+                "results": results,
             }
-        ]
+        ],
     }
 
     return json.dumps(sarif_log, indent=2, ensure_ascii=False)

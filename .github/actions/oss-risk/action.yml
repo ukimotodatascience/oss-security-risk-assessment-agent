@@ -1,0 +1,8 @@
+name: OSS Risk Assessment
+description: "Run OSS Risk Assessment Agent as CI approval gate"
+runs:
+  using: "composite"
+  steps:
+    - name: Run OSS Risk scan (SARIF)
+      shell: bash
+      run: oss-risk-agent scan . --format sarif --output result.sarif

@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 class Severity(str, Enum):
+    INFORMATIONAL = "INFORMATIONAL"
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"

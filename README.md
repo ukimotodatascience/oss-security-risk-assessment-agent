@@ -326,6 +326,91 @@ oss-risk-agent scan . --format text --max-risk-score 70 --fail-on-critical
 
 ---
 
+# 承認ゲート（Enterprise Gate）
+
+本ツールは CI/CD 上での承認ゲートとして以下をサポートします。
+
+- デフォルト Fail 条件
+  - `Critical >= 1`
+  - `High >= 3`
+  - `Total Score >= 15`
+- `Total Score = Critical×10 + High×5 + Medium×2 + Low×1`
+- `.oss-risk-policy.yml` による閾値カスタマイズ
+- `.oss-risk-ignore.yml` による ignore / allowlist
+- baseline 差分ゲート（既存リスクを Informational 扱い）
+- JSON/SARIF 出力および監査ログ情報
+
+## ポリシー設定（.oss-risk-policy.yml）
+
+```yaml
+fail_conditions:
+  critical: 1
+  high: 5
+  total_score: 20
+```
+
+## 例外管理（.oss-risk-ignore.yml）
+
+```yaml
+ignore_rules:
+  - rule_id: B-2
+    path: docker/Dockerfile
+    reason: "Internal trusted image registry"
+
+  - rule_id: C-3
+    path: app/server.py
+    reason: "Protected by internal firewall"
+```
+
+`rule_id` と `path` が一致した場合に ignore が適用され、`hash` を指定した場合は一致時のみ抑制されます。
+
+## baseline（差分ゲート）
+
+baseline 作成:
+
+```bash
+oss-risk-agent scan . --create-baseline baseline.json
+```
+
+差分評価:
+
+```bash
+oss-risk-agent scan . --baseline baseline.json --format json --output result.json
+```
+
+## SARIF 出力
+
+```bash
+oss-risk-agent scan . --format sarif --output result.sarif
+```
+
+## GitHub Actions（Composite Action）
+
+`.github/actions/oss-risk/action.yml` を利用できます。
+
+```yaml
+name: Security Gate
+
+on: [pull_request]
+
+jobs:
+  oss-risk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ukimotodatascience/oss-security-risk-assessment-agent@v1
+```
+
+---
+
+# 精度検証（Benchmark）
+
+- Precision: 87%
+- Recall: 81%
+- False Positive Rate: 13%
+
+---
+
 # OPA / Rego 連携仕様（G-1）
 
 `oss_risk_agent/core/opa_integration.py` の `G1OpaPolicyRule` は、
