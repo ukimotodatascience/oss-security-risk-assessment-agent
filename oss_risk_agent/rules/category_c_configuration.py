@@ -35,8 +35,8 @@ class C1ContainerRootRule(Rule):
                             evidence="USER命令の欠如",
                         )
                     )
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError):
+                continue
         return risks
 
 
@@ -179,8 +179,8 @@ class C3ExposedBindRule(Rule):
                                                     evidence=f"{target.id} = '0.0.0.0'",
                                                 )
                                             )
-                    except Exception:
-                        pass  # 構文エラー等は無視
+                    except (SyntaxError, OSError, UnicodeDecodeError, ValueError):
+                        continue  # 構文エラー等は無視
 
                     continue  # Pythonファイルの場合は行ベースの単語検索はスキップして次へ
 
@@ -222,8 +222,8 @@ class C3ExposedBindRule(Rule):
                                     evidence=line.strip(),
                                 )
                             )
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError):
+                continue
         return risks
 
 

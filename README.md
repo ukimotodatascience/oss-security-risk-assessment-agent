@@ -245,6 +245,46 @@ secrets変数をecho等で標準出力している場合、
 
 ---
 
+# スコアリング仕様（Risk / Maturity）
+
+本ツールは検出結果 `risks` から、以下2つの指標を算出します。
+
+- **Risk Score (0-100)**: 高いほど危険
+- **Maturity Score (0-100)**: 高いほど成熟（`100 - Risk Score`）
+
+## Severity数値化
+
+- LOW = 1
+- MEDIUM = 3
+- HIGH = 6
+- CRITICAL = 10
+
+## カテゴリ重み（A-F）
+
+- A: 0.30
+- B: 0.20
+- C: 0.20
+- D: 0.15
+- E: 0.10
+- F: 0.05
+
+## 計算概要
+
+1. カテゴリごとに Severity の平均値を取り、0-100へ正規化
+2. 上記カテゴリスコアに重みを適用して合算
+3. `Risk Score` を得る
+4. `Maturity Score = 100 - Risk Score`
+
+JSON出力では `summary` に以下が追加されます。
+
+- `risk_score`, `maturity_score`
+- `category_scores`
+- `counts_by_severity`, `counts_by_category`
+- `total_risks`, `critical_count`
+- `unscored_categories`（重み未定義カテゴリ）
+
+---
+
 # 実装済みの品質改善（2026-03）
 
 ## 1) テスト整合性の改善
@@ -274,3 +314,71 @@ oss-risk-agent scan . --format json --output-file result.json
 ```
 
 `result.json` には、検出されたリスクに加えて、スキャン時の警告も含まれます。
+
+CIゲートとして以下も利用できます。
+
+```bash
+oss-risk-agent scan . --format text --max-risk-score 70 --fail-on-critical
+```
+
+- `--max-risk-score`: 指定閾値を超えたら終了コード1
+- `--fail-on-critical`: CRITICAL検出時に終了コード1
+
+---
+
+# OPA / Rego 連携仕様（G-1）
+
+`oss_risk_agent/core/opa_integration.py` の `G1OpaPolicyRule` は、
+リポジトリ直下に `policies/` ディレクトリが存在する場合に有効化されます。
+
+現状の入力対象は `package.json` です。内部的には以下の式で評価します。
+
+- `data.oss_risk.package_json`
+
+## 実行インターフェース
+
+`OPAIntegrationEngine.evaluate(input_data, policy_name)` は以下の流れで動作します。
+
+1. `input_data` を一時JSONファイルへ保存
+2. `opa eval -f json -d <policies_dir> -i <tmp.json> data.<policy_name>` を実行
+3. OPA出力を `RiskRecord` へ変換
+
+`opa` バイナリが未インストール、または実行失敗/JSONパース失敗時は
+空配列を返します（スキャン自体は継続）。
+
+## Rego側の推奨出力スキーマ
+
+`expressions[].value` は以下形式を推奨します。
+
+```json
+{
+  "deny": [
+    {
+      "msg": "危険な依存バージョンです",
+      "severity": "CRITICAL",
+      "file": "package.json",
+      "line": 12,
+      "evidence": "left-pad@*"
+    }
+  ],
+  "warn": [
+    {
+      "msg": "推奨設定が不足しています",
+      "severity": "MEDIUM",
+      "file": "package.json"
+    }
+  ]
+}
+```
+
+## `RiskRecord` へのマッピング
+
+- `category`: 固定で `"G-1"`
+- `name`: `name` があれば利用、なければ `OPA Policy Violation (<policy_name>)`
+- `severity`: `severity` を `LOW/MEDIUM/HIGH/CRITICAL` として解釈
+  - `deny` の既定値: `HIGH`
+  - `warn` の既定値: `MEDIUM`
+- `description`: `msg` / `message` / `description` の順で採用
+- `target_file`: `target_file` / `file` / `path` の順で採用
+- `line_number`: `line_number` / `line`
+- `evidence`: `evidence` がなければ違反オブジェクトをJSON文字列化

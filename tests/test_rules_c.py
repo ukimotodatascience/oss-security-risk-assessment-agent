@@ -1,10 +1,11 @@
-import pytest
 from pathlib import Path
 from oss_risk_agent.rules.category_c_configuration import (
     C1ContainerRootRule,
     C2SensitiveFileRule,
     C3ExposedBindRule,
+    C4HighEntropySecretRule,
 )
+from oss_risk_agent.rules.category_c_iac import C5IaCPublicAccessRule
 from oss_risk_agent.core.models import Severity
 
 
@@ -75,3 +76,53 @@ def test_c3_network_bind_rule(dummy_repo: Path):
         assert risk.severity == Severity.MEDIUM
         assert risk.target_file in ["app.py", "main.go"]
         assert "0.0.0.0" in risk.evidence
+
+
+def test_c4_high_entropy_secret_rule(dummy_repo: Path):
+    rule = C4HighEntropySecretRule()
+
+    # High entropy secret-like value
+    (dummy_repo / "settings.py").write_text(
+        'API_KEY = "aB3dE5gH7jK9mN1pQ2rS4tU6vW8xY0z"', encoding="utf-8"
+    )
+
+    # Placeholder should be ignored
+    (dummy_repo / "sample.env").write_text(
+        'TOKEN = "dummy_dummy_dummy_dummy_dummy_dummy"', encoding="utf-8"
+    )
+
+    risks = rule.analyze(dummy_repo)
+
+    assert any(r.category == "C-4" for r in risks)
+    assert any(r.severity in [Severity.HIGH, Severity.CRITICAL] for r in risks)
+    assert any(r.target_file == "settings.py" for r in risks)
+
+
+def test_c5_iac_public_access_rule(dummy_repo: Path):
+    rule = C5IaCPublicAccessRule()
+
+    (dummy_repo / "main.tf").write_text(
+        'resource "aws_s3_bucket" "b" {\n  acl = "public-read"\n}\n'
+        'resource "aws_security_group" "sg" {\n  cidr_blocks = ["0.0.0.0/0"]\n}\n',
+        encoding="utf-8",
+    )
+
+    (dummy_repo / "k8s.yaml").write_text(
+        """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: app
+      securityContext:
+        privileged: true
+""",
+        encoding="utf-8",
+    )
+
+    risks = rule.analyze(dummy_repo)
+
+    assert len(risks) >= 3
+    assert all(r.category == "C-5" for r in risks)
+    assert any(r.severity == Severity.HIGH for r in risks)
+    assert any(r.severity == Severity.CRITICAL for r in risks)
