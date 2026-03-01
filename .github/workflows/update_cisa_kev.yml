@@ -1,0 +1,53 @@
+name: Update CISA KEV
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 毎日 UTC 03:00
+  workflow_dispatch:
+
+jobs:
+  update-kev:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download KEV feed
+        run: |
+          mkdir -p data/cisa
+          curl -fsSL \
+            -o data/cisa/kev.json \
+            https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+
+      - name: Build CVE index
+        run: |
+          python - << 'PY'
+          import json, pathlib
+          p = pathlib.Path("data/cisa/kev.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          vulns = data.get("vulnerabilities", [])
+          cves = sorted({v.get("cveID") for v in vulns if v.get("cveID")})
+          out = {
+            "source": "CISA KEV",
+            "generated_from": "kev.json",
+            "count": len(cves),
+            "cves": cves,
+          }
+          pathlib.Path("data/cisa/kev_index.json").write_text(
+            json.dumps(out, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+          )
+          PY
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/cisa/kev.json data/cisa/kev_index.json
+          git commit -m "chore: update CISA KEV data"
+          git push
