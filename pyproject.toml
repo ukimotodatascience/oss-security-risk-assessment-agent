@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "oss-risk-agent"
+version = "0.1.0"
+description = "OSS Security Risk Assessment Agent"
+authors = ["Author <author@example.com>"]
+readme = "README.md"
+packages = [{include = "oss_risk_agent"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+typer = "^0.9.0"
+rich = "^13.0.0"
+httpx = "^0.27.0"
+pydantic = "^2.0.0"
+pyyaml = "^6.0"
+tenacity = "^8.2.0"
+cachetools = "^5.3.0"
+semver = "^3.0.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.21.0"
+pytest-mock = "^3.12.0"
+respx = "^0.21.0"
+pytest-cov = "^5.0.0"
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=oss_risk_agent --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]
+
+[tool.poetry.scripts]
+oss-risk-agent = "oss_risk_agent.cli:app"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
