@@ -1,0 +1,14 @@
+fail_conditions:
+  critical: 1
+  high: 3
+  total_score: 15
+
+scoring:
+  w_cvss: 0.5
+  w_epss: 0.3
+  kev_bonus: 0.2
+  exploit_bonus: 0.1
+
+execution:
+  block_on_high_in_pr: true
+  scan_timeout_seconds: 300

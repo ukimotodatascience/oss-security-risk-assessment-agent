@@ -1,0 +1,133 @@
+version: 1
+rules:
+  - rule_id: A-0
+    enabled: true
+    category: A
+    title: SBOM full analysis
+    severity_default: Medium
+
+  - rule_id: A-1
+    enabled: true
+    category: A
+    title: Known vulnerabilities
+    severity_default: High
+
+  - rule_id: A-2
+    enabled: true
+    category: A
+    title: Unpinned dependency versions
+    severity_default: Medium
+
+  - rule_id: A-3
+    enabled: true
+    category: A
+    title: Unsigned artifacts
+    severity_default: Medium
+
+  - rule_id: B-1
+    enabled: true
+    category: B
+    title: GitHub Actions SHA pinning
+    severity_default: Medium
+
+  - rule_id: B-2
+    enabled: true
+    category: B
+    title: Over-privileged workflow permissions
+    severity_default: High
+
+  - rule_id: B-3
+    enabled: true
+    category: B
+    title: Unpinned Docker digest
+    severity_default: Medium
+
+  - rule_id: B-4
+    enabled: true
+    category: B
+    title: curl | bash execution
+    severity_default: High
+
+  - rule_id: C-1
+    enabled: true
+    category: C
+    title: Container runs as root
+    severity_default: Medium
+
+  - rule_id: C-2
+    enabled: true
+    category: C
+    title: Secret exposure
+    severity_default: High
+
+  - rule_id: C-3
+    enabled: true
+    category: C
+    title: Dangerous API usage
+    severity_default: High
+
+  - rule_id: C-4
+    enabled: true
+    category: C
+    title: CORS wildcard
+    severity_default: Medium
+
+  - rule_id: D-1
+    enabled: true
+    category: D
+    title: Maintenance inactivity
+    severity_default: Medium
+
+  - rule_id: D-2
+    enabled: true
+    category: D
+    title: Bus factor 1
+    severity_default: Medium
+
+  - rule_id: D-3
+    enabled: true
+    category: D
+    title: Missing security operations
+    severity_default: Medium
+
+  - rule_id: D-4
+    enabled: true
+    category: D
+    title: Patch delay
+    severity_default: Medium
+
+  - rule_id: E-1
+    enabled: true
+    category: E
+    title: GPL/AGPL license risk
+    severity_default: Medium
+
+  - rule_id: E-2
+    enabled: true
+    category: E
+    title: Incompatible license mix
+    severity_default: Medium
+
+  - rule_id: E-3
+    enabled: true
+    category: E
+    title: Undefined license
+    severity_default: Medium
+
+  - rule_id: F-1
+    enabled: true
+    category: F
+    title: Debug mode enabled
+    severity_default: Medium
+
+  - rule_id: F-2
+    enabled: true
+    category: F
+    title: HTTP-only communication
+    severity_default: Medium
+
+  - rule_id: F-3
+    enabled: true
+    category: F
+    title: Admin endpoint exposure
+    severity_default: High

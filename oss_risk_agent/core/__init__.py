@@ -1,1 +1,1 @@
-# Core components entry point
+"""Core orchestration components."""

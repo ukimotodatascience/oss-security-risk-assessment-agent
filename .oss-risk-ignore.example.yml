@@ -1,0 +1,14 @@
+ignore_rules:
+  - rule_id: "B-1"
+    path: ".github/workflows/release.yml"
+    justification: "Internal action mirror with immutable refs"
+    expiry_date: "2026-12-31"
+    approver: "security-team@example.com"
+    ticket: "SEC-1234"
+
+  - rule_id: "C-2"
+    path: "tests/fixtures/sample.env"
+    justification: "Synthetic test fixture"
+    expiry_date: "2026-06-30"
+    approver: "security-team@example.com"
+    ticket: "SEC-5678"
