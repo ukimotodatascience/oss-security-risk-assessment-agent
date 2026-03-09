@@ -19,6 +19,11 @@ class RuleEngine:
         """
         findings: list[RiskRecord] = []
         for rule in self.registry.rules:
-            _ = (target, mode, rule)
-            # TODO: run rule and append findings
+            if not rule.enabled:
+                continue
+
+            rule_findings = rule.evaluate(target=target, mode=mode)
+            for finding in rule_findings:
+                finding.scan_mode = mode
+            findings.extend(rule_findings)
         return findings

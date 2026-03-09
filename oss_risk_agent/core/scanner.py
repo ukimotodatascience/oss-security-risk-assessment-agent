@@ -29,5 +29,19 @@ class Scanner:
         """
 
         result = ScanResult(scan_mode=mode)
-        _ = self.rule_engine.evaluate(target=target, mode=mode)
+        result.risks = self.rule_engine.evaluate(target=target, mode=mode)
+        result.summary.total_risks = len(result.risks)
+
+        for risk in result.risks:
+            if risk.severity.value == "Critical":
+                result.summary.critical_count += 1
+            elif risk.severity.value == "High":
+                result.summary.high_count += 1
+            elif risk.severity.value == "Medium":
+                result.summary.medium_count += 1
+            elif risk.severity.value == "Low":
+                result.summary.low_count += 1
+            else:
+                result.summary.info_count += 1
+
         return result
